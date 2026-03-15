@@ -202,6 +202,13 @@ async def process_free_text_ad(message: types.Message):
     except Exception as e:
         logging.error(f"Ошибка GPT: {e}")
 
+@dp.message()
+async def delete_all_other_messages(message: types.Message):
+    try:
+        await message.delete()
+    except Exception as e:
+        logging.warning(f"Не удалось удалить медиа: {e}")
+
 # --- ЗАПУСК ---
 async def main():
     await bot.set_my_commands([types.BotCommand(command="start", description="🚀 Баштоо")])
