@@ -6,20 +6,17 @@ import json
 from dotenv import load_dotenv
 
 # Aiogram импорты
-from aiogram.filters import Command, CommandObject
+from aiogram.filters import Command
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # Базы данных и API
 from supabase import create_client, Client
 from openai import AsyncOpenAI
 
-# Твои локальные импорты (убедись, что файлы weather.py и auto_post.py лежат рядом)
+# Погода
 from weather import weather_background_task, build_weather_message
-from auto_post import send_instruction_post
 
 # --- КОНФИГУРАЦИЯ ---
 load_dotenv()
@@ -33,7 +30,7 @@ CHANNEL_ID = int(raw_id) if raw_id else None
 TAXI_TABLE = os.getenv("TABLE_NAME")
 BOT_LINK = os.getenv("BOT_START_LINK")
 
-# Настройка времени Бишкека для всего кода
+# Настройка времени Бишкека
 TZ_BISHKEK = datetime.timezone(datetime.timedelta(hours=6))
 
 logging.basicConfig(level=logging.INFO)
@@ -42,20 +39,7 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-aclient = AsyncOpenAI(api_key=OPENAI_KEY) # <--- ДОБАВЛЕН КЛИЕНТ OPENAI
-
-# --- СОСТОЯНИЯ (Для старого кнопочного меню) ---
-class TaxiStates(StatesGroup):
-    choosing_role = State()
-    origin = State()         # Откуда (для посылки)
-    destination = State()
-    delivery_type = State()  # Тип доставки (для посылки)
-    time = State()
-    waiting_for_custom_time = State()
-    car_model = State()     
-    price = State()         
-    passenger_count = State()
-    phone_number = State()
+aclient = AsyncOpenAI(api_key=OPENAI_KEY)
 
 # --- ФОНОВАЯ ЗАДАЧА: ОЧИСТКА СТАРЫХ ПОСТОВ (3 СУТОК) ---
 async def cleanup_old_messages():
@@ -72,85 +56,36 @@ async def cleanup_old_messages():
                 supabase.table(TAXI_TABLE).update({"message_id": None}).eq("id", record["id"]).execute()
         except Exception as e:
             logging.error(f"Ошибка очистки: {e}")
-        await asyncio.sleep(3600) # Проверка каждый час
+        await asyncio.sleep(3600)
 
-# --- КЛАВИАТУРЫ ---
-def get_start_inline_kb():
-    builder = InlineKeyboardBuilder()
-    builder.row(types.InlineKeyboardButton(text="🚕 Айдоочу", callback_data="set_role_айдоочу"))
-    builder.row(types.InlineKeyboardButton(text="👤 Жүргүнчү", callback_data="set_role_жүргүнчү"))
-    builder.row(types.InlineKeyboardButton(text="📦 Посылка жөнөтүү", callback_data="set_role_посылка"))
-    return builder.as_markup()
-
-def get_cities_kb():
-    kb = [[types.KeyboardButton(text="Таласка"), types.KeyboardButton(text="Айтматовко")], [types.KeyboardButton(text="Бишкекке")]]
-    return types.ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
-
-def get_delivery_type_kb():
-    builder = ReplyKeyboardBuilder()
-    builder.row(types.KeyboardButton(text="📦 Өзүм жеткирип берем"))
-    builder.row(types.KeyboardButton(text="🏠 Үйдөн алып кетиш керек"))
-    return builder.as_markup(resize_keyboard=True)
-
-def get_time_kb():
-    builder = ReplyKeyboardBuilder()
-    now = datetime.datetime.now(TZ_BISHKEK)
-    start_time = now.replace(minute=0, second=0, microsecond=0) + datetime.timedelta(hours=1)
-    for i in range(5):
-        slot = (start_time + datetime.timedelta(hours=i)).strftime("%H:00")
-        builder.add(types.KeyboardButton(text=slot))
-    builder.adjust(3)
-    builder.row(types.KeyboardButton(text="⏳ Башка убакыт"))
-    return builder.as_markup(resize_keyboard=True)
-
-def get_numbers_kb(count):
-    builder = ReplyKeyboardBuilder()
-    for i in range(1, int(count) + 1):
-        builder.add(types.KeyboardButton(text=str(i)))
-    builder.adjust(4)
-    return builder.as_markup(resize_keyboard=True)
-
-def get_phone_kb():
-    builder = ReplyKeyboardBuilder()
-    builder.row(types.KeyboardButton(text="📱 Номериңизди жөнөтүңүз", request_contact=True))
-    return builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
-
+# --- КНОПКА ПОД ПОСТОМ ---
 def get_channel_publish_kb():
     builder = InlineKeyboardBuilder()
     builder.row(types.InlineKeyboardButton(text="🌤 Погода / Аба ырайы", url=f"{BOT_LINK}?start=show_weather"))
-    builder.row(types.InlineKeyboardButton(text="➕ Жарыя түзүңүз", url=f"{BOT_LINK}?start=new_post"))
     return builder.as_markup()
 
-# --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ КНОПОК ---
-async def proceed_to_next_step(message: types.Message, state: FSMContext, time_value: str):
-    await state.update_data(time=time_value)
-    data = await state.get_data()
-    role = data.get('role')
-
-    if data['role'] == "айдоочу":
-        await message.answer("🚗 <b>Унаанын маркасын</b> киргизиңиз:", reply_markup=types.ReplyKeyboardRemove(), parse_mode="HTML")
-        await state.set_state(TaxiStates.car_model)
-    elif role == "жүргүнчү":
-        await message.answer("👥 Канча <b>адам</b> барат?", reply_markup=get_numbers_kb(5), parse_mode="HTML")
-        await state.set_state(TaxiStates.passenger_count)
-    elif role == "посылка":
-        await message.answer("📱 <b>«Номерди жөнөтүү баскычын басыңыз же өзүңүз жазыңыз»</b>:", reply_markup=get_phone_kb(), parse_mode="HTML")
-        await state.set_state(TaxiStates.phone_number)
+# --- КОМАНДА /start (Оставили только для погоды) ---
+@dp.message(Command("start"))
+async def cmd_start(message: types.Message):
+    if message.text and "show_weather" in message.text:
+        try:
+            status_msg = await message.answer("⏳ Аба ырайы тууралуу маалымат алынууда...") 
+            weather_text = await build_weather_message()
+            await status_msg.edit_text(weather_text, parse_mode="HTML")
+        except Exception as e:
+            await message.answer(f"❌ Ошибка при загрузке погоды: {e}")
+    else:
+        await message.answer("👋 Саламатсызбы! Мен группадан жарыяларды автоматтык түрдө түзүүчү ботмун.")
 
 # =====================================================================
-# --- НОВЫЙ БЛОК: УМНЫЙ ПАРСИНГ СООБЩЕНИЙ ЧЕРЕЗ CHATGPT ---
+# --- ГЛАВНЫЙ БЛОК: УМНЫЙ ПАРСИНГ СООБЩЕНИЙ ЧЕРЕЗ CHATGPT ---
 # =====================================================================
 
 @dp.message(F.text & ~F.text.startswith('/'))
-async def process_free_text_ad(message: types.Message, state: FSMContext):
-    # Если юзер находится в процессе заполнения через кнопки, не ломаем ему логику
-    current_state = await state.get_state()
-    if current_state is not None:
-        return
-
+async def process_free_text_ad(message: types.Message):
     user_id = message.from_user.id
     
-    # 1. Достаем последний пост юзера из БД для экономии токенов и заполнения пустот
+    # 1. Достаем последний пост юзера из БД
     try:
         res = supabase.table(TAXI_TABLE).select("*").eq("user_id", user_id).order("created_at", desc=True).limit(1).execute()
         past_data = res.data[0] if res.data else {}
@@ -158,7 +93,7 @@ async def process_free_text_ad(message: types.Message, state: FSMContext):
         logging.error(f"Ошибка БД при чтении: {e}")
         past_data = {}
 
-    # 2. Промпт для GPT (возвращает JSON)
+    # 2. Промпт для GPT
     prompt = f"""
     Проанализируй текст и извлеки данные для объявления попутки (такси/передача/поиск машины). 
     Текст: "{message.text}"
@@ -230,7 +165,7 @@ async def process_free_text_ad(message: types.Message, state: FSMContext):
                      f"📞 <b>Тел.</b>: <a href='tel:{clean_phone}'><code>{phone}</code></a>\n\n"
                      f"👤 <b>{role_name.capitalize()}</b>: <a href='tg://user?id={user_id}'>{message.from_user.full_name}</a>")
 
-        # 6. Удаляем оригинальное сообщение (если бот админ)
+        # 6. Удаляем оригинальное сообщение юзера
         try:
             await message.delete()
         except Exception as e:
@@ -263,163 +198,11 @@ async def process_free_text_ad(message: types.Message, state: FSMContext):
     except Exception as e:
         logging.error(f"Ошибка GPT: {e}")
 
-# =====================================================================
-# --- СТАРЫЕ ОБРАБОТЧИКИ (Оставлены для поддержки /start в личке) ---
-# =====================================================================
-
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message, state: FSMContext):
-    await state.clear()
-    
-    if message.text and "show_weather" in message.text:
-        try:
-            status_msg = await message.answer("⏳ Аба ырайы тууралуу маалымат алынууда...") 
-            weather_text = await build_weather_message()
-            await status_msg.edit_text(weather_text, parse_mode="HTML")
-        except Exception as e:
-            await message.answer(f"❌ Ошибка при загрузке погоды: {e}")
-
-    welcome_text = "👋 <b>Саламатсызбы!</b>\n\nЖарыя берүү үчүн төмөндөн ролуңузду тандаңыз:"
-    await message.answer(welcome_text, reply_markup=get_start_inline_kb(), parse_mode="HTML")
-    await state.set_state(TaxiStates.choosing_role)
-
-@dp.callback_query(F.data.startswith("set_role_"))
-async def process_role_callback(callback: types.CallbackQuery, state: FSMContext):
-    role = callback.data.split("_")[2]
-    await state.update_data(role=role)
-
-    if role == "посылка":
-        await callback.message.answer("📦 <b>Посылка каякта турат?</b>\n(Мисалы: Талас, Айтматов көчөсү 5)", reply_markup=types.ReplyKeyboardRemove(), parse_mode="HTML")
-        await state.set_state(TaxiStates.origin)
-    else:
-        await callback.message.answer(f"📍 Сиз: <b>{role}</b> тандадыңыз. Каякка барабыз?", reply_markup=get_cities_kb(), parse_mode="HTML")
-        await state.set_state(TaxiStates.destination)
-    await callback.answer()
-
-@dp.message(TaxiStates.origin)
-async def process_origin(message: types.Message, state: FSMContext):
-    await state.update_data(origin=message.text)
-    await message.answer("📍 <b>Посылканы каякка жеткириши керек?</b>\n(Мисалы: Бишкек, Ош базар)", parse_mode="HTML")
-    await state.set_state(TaxiStates.destination)
-
-@dp.message(TaxiStates.destination)
-async def process_dest(message: types.Message, state: FSMContext):
-    await state.update_data(destination=message.text)
-    data = await state.get_data()
- 
-    if data['role'] == "посылка":
-        await message.answer("📦 <b>Посылканы кандай бересиз?</b>", reply_markup=get_delivery_type_kb(), parse_mode="HTML")
-        await state.set_state(TaxiStates.delivery_type)
-    else:
-        await message.answer("🕒 Чыгуу <b>убактысын</b> тандаңыз:", reply_markup=get_time_kb(), parse_mode="HTML")
-        await state.set_state(TaxiStates.time)
-
-@dp.message(TaxiStates.delivery_type)
-async def process_delivery_type(message: types.Message, state: FSMContext):
-    await state.update_data(delivery_type=message.text)
-    await message.answer("🕒 <b>Качан / Саат канчада?</b> (Мисалы: Бүгүн 17:00)", reply_markup=types.ReplyKeyboardRemove(), parse_mode="HTML")
-    await state.set_state(TaxiStates.waiting_for_custom_time)
-
-@dp.message(TaxiStates.time)
-async def process_time(message: types.Message, state: FSMContext):
-    if message.text == "⏳ Башка убакыт":
-        await message.answer("📝 Убакытты киргизиңиз (мисалы: 15:30, 'бир сааттан кийин' же 'азыр'):", reply_markup=types.ReplyKeyboardRemove(), parse_mode="HTML")
-        await state.set_state(TaxiStates.waiting_for_custom_time)
-    else:
-        await proceed_to_next_step(message, state, message.text)
-
-@dp.message(TaxiStates.waiting_for_custom_time)
-async def process_custom_time(message: types.Message, state: FSMContext):
-    await proceed_to_next_step(message, state, message.text)
-
-@dp.message(TaxiStates.car_model)
-async def process_car(message: types.Message, state: FSMContext):
-    await state.update_data(car_model=message.text)
-    await message.answer("💰 <b>Баасын</b> көрсөтүңүз (сом):", parse_mode="HTML")
-    await state.set_state(TaxiStates.price)
-
-@dp.message(TaxiStates.price)
-async def process_price(message: types.Message, state: FSMContext):
-    await state.update_data(price=message.text)
-    await message.answer("💺 Канча <b>бош орун </b> бар?", reply_markup=get_numbers_kb(7), parse_mode="HTML")
-    await state.set_state(TaxiStates.passenger_count)
-
-@dp.message(TaxiStates.passenger_count)
-async def process_p_count(message: types.Message, state: FSMContext):
-    await state.update_data(passenger_count=message.text)
-    await message.answer("📱 <b>«Номерди жөнөтүү баскычын басыңыз же өзүңүз жазыңыз»</b>:", reply_markup=get_phone_kb(), parse_mode="HTML")
-    await state.set_state(TaxiStates.phone_number)
-
-@dp.message(TaxiStates.phone_number)
-async def process_phone(message: types.Message, state: FSMContext):
-    phone = message.contact.phone_number if message.contact else message.text
-    await state.update_data(phone_number=phone)
-    data = await state.get_data()
-    user = message.from_user
-    role = data.get('role')
-
-    clean_phone = phone.replace(" ", "").replace("-", "")
-    if not clean_phone.startswith('+') and clean_phone.replace('+','').isdigit(): 
-        clean_phone = '+' + clean_phone
-    
-    if role == "посылка":
-        icon = "📦"
-        role_name = "ПОСЫЛКА"
-        text = (f"{icon} <b>{role_name}</b>\n\n"
-                f"📤 <b>Каяктан</b>: {data.get('origin')}\n"
-                f"📥 <b>Каякка</b>: {data['destination']}\n"
-                f"🚚 <b>Түрү</b>: {data.get('delivery_type')}\n"
-                f"🕒 <b>Убакыт</b>: {data['time']}\n"
-                f"📞 <b>Тел.</b>: <a href='tel:{clean_phone}'><code>{phone}</code></a>\n\n"
-                f"👤 <b>Жөнөтүүчү</b>: <a href='tg://user?id={user.id}'>{user.full_name}</a>")
-    else:
-        role_name = "АЙДООЧУ" if data['role'] == "айдоочу" else "ЖҮРГҮНЧҮ"
-        icon = "🚕" if data['role'] == "айдоочу" else "👤"
-        text = (f"{icon} <b>{role_name}</b>\n\n"
-            f"📍 <b>Каякка</b>: {data['destination']}\n"
-            f"🕒 <b>Убакыт</b>: {data['time']}\n")
-        
-        if role == "айдоочу":
-            text += f"🚗 <b>Унаа</b>: {data.get('car_model')}\n💰 <b>Баасы</b>: {data.get('price')} сом\n"
-   
-        label = 'Орун' if role == 'айдоочу' else 'Адам'
-        text += (f"👥 <b>{label}</b>: {data.get('passenger_count', '1')}\n"
-                 f"📞 <b>Тел.</b>: <a href='tel:{clean_phone}'><code>{phone}</code></a>\n\n"
-                 f"👤 <b>{role_name.capitalize()}</b>: <a href='tg://user?id={user.id}'>{user.full_name}</a>")
-    
-    try:
-        count_res = supabase.table(TAXI_TABLE).select("id", count="exact").eq("user_id", user.id).eq("role", data['role']).execute()
-        post_count = (count_res.count or 0) + 1
-
-        msg = await bot.send_message(chat_id=CHANNEL_ID, text=text, parse_mode="HTML", reply_markup=get_channel_publish_kb())
-
-        db_payload = {
-            "user_id": user.id, 
-            "role": role, 
-            "destination": data.get('destination'),
-            "time": data.get('time'), 
-            "passenger_count": data.get('passenger_count'), 
-            "phone_num": phone, 
-            "car_model": data.get("car_model") if role != "посылка" else f"Откуда: {data.get('origin')}", 
-            "price": data.get("price") if role != "посылка" else data.get("delivery_type"), 
-            "message_id": msg.message_id,
-            "post_count": post_count, 
-            "created_at": datetime.datetime.now(TZ_BISHKEK).isoformat()
-        }
-        supabase.table(TAXI_TABLE).insert(db_payload).execute()
-
-        await message.answer(f"✅ <b>Жарыяланды!</b>\nЖарыя №{post_count}", parse_mode="HTML", reply_markup=get_start_inline_kb())
-    except Exception as e:
-        logging.error(f"Ошибка: {e}") 
-        await message.answer(f"❌ Ошибка: {e}")
-    await state.clear()
-
 # --- ЗАПУСК ---
 async def main():
     await bot.set_my_commands([types.BotCommand(command="start", description="🚀 Баштоо")])
     asyncio.create_task(cleanup_old_messages())
     asyncio.create_task(weather_background_task(bot, CHANNEL_ID))
-    asyncio.create_task(send_instruction_post(bot, CHANNEL_ID))
     
     await dp.start_polling(bot)
 
