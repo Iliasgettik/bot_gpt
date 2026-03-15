@@ -211,7 +211,7 @@ async def process_free_text_ad(message: types.Message):
             "origin": origin,
             "destination": destination,
             "time": time, 
-            "passenger_count": str(passenger_count), 
+            "passenger_count": str(passenger_count) if role != "жүк ташуу" else cargo_type,
             "phone_num": phone, 
             "car_model": car_model, 
             "price": price, 
