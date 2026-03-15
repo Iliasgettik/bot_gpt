@@ -130,15 +130,18 @@ async def process_free_text_ad(message: types.Message):
                 logging.warning(f"Не удалось удалить спам: {e}")
             return
 
-        # 4. Склеиваем данные: новые от GPT + старые из БД
+        # 4. Склеиваем данные
+        # Эти данные ПОСТОЯННЫЕ (берем из БД, если человек забыл их написать):
         role = parsed_data.get("role") or past_data.get("role", "айдоочу")
-        origin = parsed_data.get("origin") or past_data.get("origin", "Такталган жок")
-        destination = parsed_data.get("destination") or past_data.get("destination", "Такталган жок")
-        time = parsed_data.get("time") or "Сүйлөшүү боюнча"
-        price = parsed_data.get("price") or past_data.get("price", "Келишим баада")
-        passenger_count = parsed_data.get("passenger_count") or past_data.get("passenger_count", "1")
         phone = parsed_data.get("phone_number") or past_data.get("phone_num", "Номери жок")
         car_model = parsed_data.get("car_model") or past_data.get("car_model", "Көрсөтүлгөн жок")
+
+        # А эти данные ДИНАМИЧЕСКИЕ (каждый рейс новые). Из старой БД их НЕ БЕРЕМ!
+        origin = parsed_data.get("origin") or "Такталган жок"
+        destination = parsed_data.get("destination") or "Такталган жок"
+        time = parsed_data.get("time") or "Сүйлөшүү боюнча"
+        price = parsed_data.get("price") or "Келишим баада"
+        passenger_count = parsed_data.get("passenger_count") or "Такталган жок"
 
         # Форматируем номер телефона
         clean_phone = phone.replace(" ", "").replace("-", "")
