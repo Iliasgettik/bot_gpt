@@ -100,13 +100,14 @@ async def process_free_text_ad(message: types.Message):
     Текст: "{message.text}"
     
     Верни строго JSON со следующими ключами:
-    "is_ad": boolean (true ТОЛЬКО если это такси, посылка или поиск машины. Если это реклама других услуг (массаж, знакомства, продажа вещей, работа), спам или просто общение — ставь строго false!),
-    "role": string ("айдоочу", "жүргүнчү", "посылка" или null),
+    "is_ad": boolean (true ТОЛЬКО если это такси, посылка, поиск машины или грузоперевозка. Если реклама других услуг (массаж и тд) или спам — ставь false!),
+    "role": string ("айдоочу", "жүргүнчү", "посылка", "жүк ташуу" или null),
     "origin": string (откуда выезд, или null),
     "destination": string (куда едут, или null),
     "time": string (время/дата отправления, или null),
     "price": string (цена, или null),
     "passenger_count": string (количество мест/людей, или null),
+    "cargo_type": string (описание груза, что везут, если это "жүк ташуу", иначе null),
     "phone_number": string (номер телефона, или null),
     "car_model": string (марка машины, или null)
     """
@@ -149,6 +150,10 @@ async def process_free_text_ad(message: types.Message):
             clean_phone = '+' + clean_phone
 
         # 5. Формируем красивый текст
+        # Достаем тип груза, если он есть
+        cargo_type = parsed_data.get("cargo_type") or "Такталган жок"
+
+        # 5. Формируем красивый текст
         if role == "посылка":
             icon = "📦"
             role_name = "ПОСЫЛКА"
@@ -158,6 +163,19 @@ async def process_free_text_ad(message: types.Message):
                     f"🕒 <b>Убакыт</b>: {time}\n"
                     f"📞 <b>Тел.</b>: <a href='tel:{clean_phone}'><code>{phone}</code></a>\n\n"
                     f"👤 <b>Жөнөтүүчү</b>: <a href='tg://user?id={user_id}'>{message.from_user.full_name}</a>")
+        
+        elif role == "жүк ташуу":
+            icon = "🚛"
+            role_name = "ЖҮК ТАШУУ"
+            text = (f"{icon} <b>{role_name}</b>\n\n"
+                    f"📍 <b>Маршрут</b>: {origin} ➡️ {destination}\n"
+                    f"🕒 <b>Убакыт</b>: {time}\n"
+                    f"🚛 <b>Унаа</b>: {car_model}\n"
+                    f"📦 <b>Жүк</b>: {cargo_type}\n"
+                    f"💰 <b>Баасы</b>: {price}\n"
+                    f"📞 <b>Тел.</b>: <a href='tel:{clean_phone}'><code>{phone}</code></a>\n\n"
+                    f"👤 <b>Жарыя ээси</b>: <a href='tg://user?id={user_id}'>{message.from_user.full_name}</a>")
+            
         else:
             role_name = "АЙДООЧУ" if role == "айдоочу" else "ЖҮРГҮНЧҮ"
             icon = "🚕" if role == "айдоочу" else "👤"
