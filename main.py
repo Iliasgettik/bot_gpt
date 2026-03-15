@@ -168,7 +168,8 @@ async def process_free_text_ad(message: types.Message):
             icon = "🚛"
             role_name = "ЖҮК ТАШУУ"
             text = (f"{icon} <b>{role_name}</b>\n\n"
-                    f"📍 <b>Маршрут</b>: {origin} ➡️ {destination}\n"
+                    f"📍 <b>Каяктан</b>: {origin}\n"
+                    f"🏁 <b>Каякка</b>: {destination}\n"
                     f"🕒 <b>Убакыт</b>: {time}\n"
                     f"🚛 <b>Унаа</b>: {car_model}\n"
                     f"📦 <b>Жүк</b>: {cargo_type}\n"
@@ -180,8 +181,17 @@ async def process_free_text_ad(message: types.Message):
             role_name = "АЙДООЧУ" if role == "айдоочу" else "ЖҮРГҮНЧҮ"
             icon = "🚕" if role == "айдоочу" else "👤"
             text = (f"{icon} <b>{role_name}</b>\n\n"
-                    f"📍 <b>Маршрут</b>: {origin} ➡️ {destination}\n"
+                    f"📍 <b>Каяктан</b>: {origin}\n"
+                    f"🏁 <b>Каякка</b>: {destination}\n"
                     f"🕒 <b>Убакыт</b>: {time}\n")
+            
+            if role == "айдоочу":
+                text += f"🚗 <b>Унаа</b>: {car_model}\n💰 <b>Баасы</b>: {price}\n"
+            
+            label = 'Орун' if role == 'айдоочу' else 'Адам'
+            text += (f"👥 <b>{label}</b>: {passenger_count}\n"
+                     f"📞 <b>Тел.</b>: <a href='tel:{clean_phone}'><code>{phone}</code></a>\n\n"
+                     f"👤 <b>{role_name.capitalize()}</b>: <a href='tg://user?id={user_id}'>{message.from_user.full_name}</a>")
             
             if role == "айдоочу":
                 text += f"🚗 <b>Унаа</b>: {car_model}\n💰 <b>Баасы</b>: {price}\n"
