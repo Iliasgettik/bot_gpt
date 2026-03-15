@@ -123,6 +123,10 @@ async def process_free_text_ad(message: types.Message):
         
         # Игнорируем обычные сообщения ("привет", "как дела")
         if not parsed_data.get("is_ad"):
+            try:
+                await message.delete()
+            except Exception as e:
+                logging.warning(f"Не удалось удалить спам: {e}")
             return
 
         # 4. Склеиваем данные: новые от GPT + старые из БД
