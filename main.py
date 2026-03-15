@@ -185,13 +185,14 @@ async def process_free_text_ad(message: types.Message):
                     f"🏁 <b>Каякка</b>: {destination}\n"
                     f"🕒 <b>Убакыт</b>: {time}\n")
             
-        if role == "айдоочу":
-            text += f"🚗 <b>Унаа</b>: {car_model}\n💰 <b>Баасы</b>: {price}\n"
+            if role == "айдоочу":
+                text += f"🚗 <b>Унаа</b>: {car_model}\n💰 <b>Баасы</b>: {price}\n"
             
             label = 'Орун' if role == 'айдоочу' else 'Адам'
             text += (f"👥 <b>{label}</b>: {passenger_count}\n"
                      f"📞 <b>Тел.</b>: <a href='tel:{clean_phone}'><code>{phone}</code></a>\n\n"
                      f"👤 <b>{role_name.capitalize()}</b>: <a href='tg://user?id={user_id}'>{message.from_user.full_name}</a>")
+
         # 6. Удаляем оригинальное сообщение юзера
         try:
             await message.delete()
