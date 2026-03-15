@@ -176,7 +176,7 @@ async def process_free_text_ad(message: types.Message):
         post_count = (count_res.count or 0) + 1
 
         # 7. Отправляем в канал/группу
-        msg = await bot.send_message(chat_id=CHANNEL_ID, text=text, parse_mode="HTML", reply_markup=get_channel_publish_kb())
+        msg = await bot.send_message(chat_id=message.chat.id, text=text, parse_mode="HTML", reply_markup=get_channel_publish_kb())
 
         # 8. Сохраняем в Supabase
         db_payload = {
