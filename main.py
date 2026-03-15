@@ -84,6 +84,7 @@ async def cmd_start(message: types.Message):
 @dp.message(F.text & ~F.text.startswith('/'))
 async def process_free_text_ad(message: types.Message):
     user_id = message.from_user.id
+    text_lower = message.text.lower()
     if "http" in text_lower or "t.me" in text_lower or "www." in text_lower:
         try:
             await message.delete()
