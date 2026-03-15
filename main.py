@@ -84,7 +84,23 @@ async def cmd_start(message: types.Message):
 @dp.message(F.text & ~F.text.startswith('/'))
 async def process_free_text_ad(message: types.Message):
     user_id = message.from_user.id
-    
+    if "http" in text_lower or "t.me" in text_lower or "www." in text_lower:
+        try:
+            await message.delete()
+        except Exception as e:
+            logging.warning(f"Не удалось удалить сообщение со ссылкой: {e}")
+        return # Останавливаем код, в ИИ не идем
+
+    # 2. Фильтр коротких сообщений (меньше 3 слов)
+    # split() разбивает текст на слова по пробелам
+    words = message.text.split()
+    if len(words) < 3:
+        try:
+            await message.delete()
+        except Exception as e:
+            logging.warning(f"Не удалось удалить короткое сообщение: {e}")
+        return # Останавливаем код, в ИИ не идем
+
     # 1. Достаем последний пост юзера из БД
     try:
         res = supabase.table(TAXI_TABLE).select("*").eq("user_id", user_id).order("created_at", desc=True).limit(1).execute()
