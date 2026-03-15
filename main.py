@@ -186,7 +186,7 @@ async def process_free_text_ad(message: types.Message):
                     f"🕒 <b>Убакыт</b>: {time}\n")
             
             if role == "айдоочу":
-                text += f"🚗 <b>Унаа</b>: {car_model}\n💰 <b>Баасы</b>: {price}\n"
+                text += f"🚗 <b>Унаа</b>: {car_model}"
             text += f"💰 <b>Баасы</b>: {price}\n"
 
             label = 'Орун' if role == 'айдоочу' else 'Адам'
